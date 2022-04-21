@@ -1,6 +1,6 @@
 import { TFile, Vault ,Editor} from 'obsidian'
 import { S3Client, ListObjectsV2Command, _Object, GetObjectCommand, PutObjectCommand, DeleteObjectCommand, ListObjectsV2CommandOutput } from '@aws-sdk/client-s3'
-import { AwsProfile } from './aws'
+// import { AwsProfile } from './aws'
 import * as path from 'path'
 import * as crypto from 'crypto'
 import { Readable } from 'stream'
@@ -196,22 +196,29 @@ export interface CmsOption{
 }
 export default class FileManager {
   vault: Vault;
-  profile: AwsProfile;
+  // profile: AwsProfile;
   bucketOpt: BucketOption;
   syncOpt: SyncOptions;
   localFiles: LocalFile[];
   remoteFiles: RemoteFile[];
   cmsOpt:CmsOption;
   fileCRUD:FileCRUD;
+  db:string;
 
-  constructor(vault: Vault, cmsOpt:CmsOption,profile: AwsProfile, bucketOpt: BucketOption, syncOpt: SyncOptions) {
+  constructor(vault: Vault,db:string,cmsOpt:CmsOption, bucketOpt: BucketOption, syncOpt: SyncOptions) {
     this.vault = vault
-    this.profile = profile
     this.bucketOpt = bucketOpt
     this.syncOpt = syncOpt
     this.cmsOpt=cmsOpt
-    this.fileCRUD= new Cms(cmsOpt.url,cmsOpt.authorizeSDK);
-    // this.fileCRUD = new AliYunOSS(bucketOpt);
+    this.db = db
+    if(db=="CMS"){
+      this.fileCRUD= new Cms(cmsOpt.url,cmsOpt.authorizeSDK);
+    
+    }else{
+      this.fileCRUD = new AliYunOSS(bucketOpt);
+    }
+    
+    // 
     //TUDO
  
   }

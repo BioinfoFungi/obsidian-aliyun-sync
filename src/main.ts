@@ -1,7 +1,7 @@
 import * as os from 'os'
 import * as path from 'path'
 import { Notice, Plugin,Editor } from 'obsidian'
-import AwsCredentials, { AwsProfile } from './lib/aws'
+// import AwsCredentials, { AwsProfile } from './lib/aws'
 import FileManager, { SyncStat, SyncDirection, UPLOAD_SYMBOL, DOWNLOAD_SYMBOL, DELETE_SYMBOL } from './lib/filemanager'
 import AwsSyncPluginSettings, { DEFAULT_SETTINGS } from './settings'
 import AwsSyncSettingTab from './settings-tab'
@@ -21,7 +21,7 @@ enum PluginState {
 export default class AwsSyncPlugin extends Plugin {
 	settings: AwsSyncPluginSettings;
 	statusBarItem: HTMLElement;
-	awsCredentials: AwsCredentials;
+	// awsCredentials: AwsCredentials;
 	fileManager: FileManager;
 	state: PluginState;
 	syncStatus: SyncStat;
@@ -29,15 +29,16 @@ export default class AwsSyncPlugin extends Plugin {
 	pullInterval: number
 
 	async onload(): Promise<void> {
-		this.awsCredentials = new AwsCredentials(path.join(os.homedir(), '.aws', 'credentials'))
-		await this.awsCredentials.loadProfiles()
+		// this.awsCredentials = new AwsCredentials(path.join(os.homedir(), '.aws', 'credentials'))
+		// await this.awsCredentials.loadProfiles()
 
 		await this.loadSettings()
+		this.setupPasteHandler(this.fileManager)
 		this.addSettingTab(new AwsSyncSettingTab(this.app, this))
 
 	
 
-		this.setState(PluginState.LOADING)
+		
 
 		this.app.vault.on('create', this.onLocalFileChanged.bind(this))
 		this.app.vault.on('modify', this.onLocalFileChanged.bind(this))
@@ -110,9 +111,9 @@ export default class AwsSyncPlugin extends Plugin {
 		}
 
 		this.fileManager = new FileManager(this.app.vault,
+			this.settings.db,
 			{url:this.settings.url,
-				authorizeSDK:this.settings.authorizeSDK}, 
-			this.getConfiguredProfile(), {
+				authorizeSDK:this.settings.authorizeSDK}, {
 			bucketName: this.getConfiguredBucketName(),
 			pathPrefix: this.getConfiguredBucketPathPrefix(),
 			endpoint: this.getConfiguredBucketEndpoint(),
@@ -123,7 +124,9 @@ export default class AwsSyncPlugin extends Plugin {
 			direction: this.settings.syncDirection,
 			localFileProtection: this.settings.localFileProtection
 		})
-		this.setupPasteHandler(this.fileManager)
+
+
+		
 		await this.fileManager.loadLocalFiles()
 		await this.fileManager.loadRemoteFiles()
 		this.updateStatusBarText()
@@ -142,14 +145,14 @@ export default class AwsSyncPlugin extends Plugin {
 		if (!this.statusBarItem) {
 			return
 		}
-		this.statusBarItem.setText(PLUGIN_TEXT_PREFIX + msg)
+		this.statusBarItem.setText(this.settings.db+": " + msg)
 	}
 
 	sendNotification(msg: string): void {
 		if (!this.settings.enableNotifications) {
 			return
 		}
-		new Notice(PLUGIN_TEXT_PREFIX + msg)
+		new Notice(this.settings.db+": " + msg)
 	}
 
 	async onLocalFileChanged(): Promise<void> {
@@ -263,16 +266,16 @@ export default class AwsSyncPlugin extends Plugin {
 		this.state = state
 	}
 
-	getConfiguredProfile(): AwsProfile | undefined {
-		const configuredProfile = this.awsCredentials.getProfileByName(this.settings.profile)
+	// getConfiguredProfile(): AwsProfile | undefined {
+	// 	const configuredProfile = this.awsCredentials.getProfileByName(this.settings.profile)
 
-		if (!configuredProfile) {
-			this.setState(PluginState.ERROR, `profile '${this.settings.profile}' not found`)
-			return
-		}
+	// 	if (!configuredProfile) {
+	// 		this.setState(PluginState.ERROR, `profile '${this.settings.profile}' not found`)
+	// 		return
+	// 	}
 
-		return configuredProfile
-	}
+	// 	return configuredProfile
+	// }
 
 	getConfiguredBucketName(): string {
 		return this.settings.bucketName
@@ -320,10 +323,10 @@ export default class AwsSyncPlugin extends Plugin {
 			return false
 		}
 
-		const configuredProfile = this.getConfiguredProfile()
-		if (!configuredProfile) {
-			return false
-		}
+		// const configuredProfile = this.getConfiguredProfile()
+		// if (!configuredProfile) {
+		// 	return false
+		// }
 
 		return true
 	}
@@ -436,8 +439,10 @@ export default class AwsSyncPlugin extends Plugin {
 		// if Files empty or does not contain image, throw error
 		this.registerEvent(this.app.workspace.on('editor-paste',async (evt: ClipboardEvent, editor: Editor)=>{
 			const { files } = evt.clipboardData;
-			if(files.length > 0){
-				if (this.fileManager) {
+			// console.log("editor-paste-->")
+			// console.log(files)
+			if(files.length > 0 ){
+				if (this.fileManager && files[0].type.startsWith("image")) {
 					evt.preventDefault(); // Prevent default paste behaviour
 					this.fileManager.uploadImage(files,editor)
 				}
@@ -452,9 +457,12 @@ export default class AwsSyncPlugin extends Plugin {
 			
 		}))
 		this.registerEvent(this.app.workspace.on('editor-drop', (evt: DragEvent, editor: Editor) => {
+		
 			const { files } = evt.dataTransfer;
+			// console.log("editor-drop-->")
+			// console.log(files)
 			if(files.length > 0){
-				if (this.fileManager) {
+				if (this.fileManager && files[0].type.startsWith("image")) {
 					evt.preventDefault(); // Prevent default paste behaviour
 					this.fileManager.uploadImage(files,editor)
 			

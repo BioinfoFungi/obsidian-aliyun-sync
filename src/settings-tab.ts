@@ -1,6 +1,6 @@
 import { App, PluginSettingTab, Setting } from 'obsidian'
 import AwsSyncPlugin from './main'
-import { AwsProfile, REGIONS } from './lib/aws'
+// import { AwsProfile, REGIONS } from './lib/aws'
 import { SyncDirection } from './lib/filemanager'
 
 export default class AwsSyncSettingTab extends PluginSettingTab {
@@ -15,7 +15,18 @@ export default class AwsSyncSettingTab extends PluginSettingTab {
 		const {containerEl} = this
 
 		containerEl.empty()
-
+		new Setting(containerEl)
+				.setName('CMS-OSS')
+				.setDesc('CMS-OSS')
+				.addDropdown(dropdown => dropdown
+					.addOptions({"CMS":"CMS"})
+					.addOptions({"OSS":"OSS"})
+					.setValue(this.plugin.settings.db)
+					.onChange(async (value) => {
+						this.plugin.settings.db = value
+						await this.plugin.saveSettings()
+					}))
+	
 
 		new Setting(containerEl)
 		.setName('url')
@@ -40,27 +51,26 @@ export default class AwsSyncSettingTab extends PluginSettingTab {
 				}))
 
 
-		const profiles = await this.plugin.awsCredentials.loadProfiles()
-		if (profiles.length > 0) {
-			new Setting(containerEl)
-				.setName('AWS Profile')
-				.setDesc('The name AWS profile name configured in credentials file')
-				.addDropdown(dropdown => dropdown
-					.addOptions(profiles.reduce((acc: {[key: string]: string}, profile: AwsProfile) => {
-						acc[profile.name] = profile.name
-						return acc
-					}, {}))
-					.setValue(this.plugin.settings.profile)
-					.onChange(async (value) => {
-						this.plugin.settings.profile = value
-						await this.plugin.saveSettings()
-					}))
-		} else {
-			containerEl.createEl('p', {text: 'Cloud not find any AWS profiles!', cls: ['setting-item', 'aws-s3-sync-no-profile']})
-		}
+		// const profiles = await this.plugin.awsCredentials.loadProfiles()
+		// if (profiles.length > 0) {
+		// 	new Setting(containerEl)
+		// 		.setName('AWS Profile')
+		// 		.setDesc('The name AWS profile name configured in credentials file')
+		// 		.addDropdown(dropdown => dropdown
+		// 			.addOptions(profiles.reduce((acc: {[key: string]: string}, profile: AwsProfile) => {
+		// 				acc[profile.name] = profile.name
+		// 				return acc
+		// 			}, {}))
+		// 			.setValue(this.plugin.settings.profile)
+		// 			.onChange(async (value) => {
+		// 				this.plugin.settings.profile = value
+		// 				await this.plugin.saveSettings()
+		// 			}))
+		// } else {
+		// 	containerEl.createEl('p', {text: 'Cloud not find any AWS profiles!', cls: ['setting-item', 'aws-s3-sync-no-profile']})
+		// }
 
 
-	
     new Setting(containerEl)
       .setName('AWS Region')
       .setDesc('The region where S3 bucket was created')
@@ -234,3 +244,26 @@ export default class AwsSyncSettingTab extends PluginSettingTab {
 
 	}
 }
+const REGIONS = {
+	'oss-cn-beijing': 'oss-cn-beijing'
+	// 'us-east-1': 'US East (N. Virginia)',
+	// 'us-west-1': 'US West (N. California)',
+	// 'us-west-2': 'US West (Oregon)',
+	// 'af-south-1': 'Africa (Cape Town)',
+	// 'ap-east-1': 'Asia Pacific (Hong Kong)',
+	// 'ap-south-1': 'Asia Pacific (Mumbai)',
+	// 'ap-northeast-3': 'Asia Pacific (Osaka)',
+	// 'ap-northeast-2': 'Asia Pacific (Seoul)',
+	// 'ap-southeast-1': 'Asia Pacific (Singapore)',
+	// 'ap-southeast-2': 'Asia Pacific (Sydney)',
+	// 'ap-northeast-1': 'Asia Pacific (Tokyo)',
+	// 'ca-central-1': 'Canada (Central)',
+	// 'eu-central-1': 'Europe (Frankfurt)',
+	// 'eu-west-1': 'Europe (Ireland)',
+	// 'eu-west-2': 'Europe (London)',
+	// 'eu-south-1': 'Europe (Milan)',
+	// 'eu-west-3': 'Europe (Paris)',
+	// 'eu-north-1': 'Europe (Stockholm)',
+	// 'me-south-1': 'Middle East (Bahrain)',
+	// 'sa-east-1': 'South America (São Paulo)'
+  }

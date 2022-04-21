@@ -2,6 +2,7 @@ import { SyncDirection } from './lib/filemanager'
 
 export default interface AwsSyncPluginSettings {
 	profile: string;
+	db:string;
 
 	url:string;
 	authorizeSDK:string;
@@ -24,7 +25,8 @@ export default interface AwsSyncPluginSettings {
 }
 
 export const DEFAULT_SETTINGS: AwsSyncPluginSettings = {
-	profile: 'default',
+	profile: '',
+	db:"OSS",
 	region: 'us-east-1',
 
 	url:"http://localhost:8080",
