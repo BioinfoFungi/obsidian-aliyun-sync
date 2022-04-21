@@ -1,6 +1,6 @@
 import * as os from 'os'
 import * as path from 'path'
-import { Notice, Plugin } from 'obsidian'
+import { Notice, Plugin,Editor } from 'obsidian'
 import AwsCredentials, { AwsProfile } from './lib/aws'
 import FileManager, { SyncStat, SyncDirection, UPLOAD_SYMBOL, DOWNLOAD_SYMBOL, DELETE_SYMBOL } from './lib/filemanager'
 import AwsSyncPluginSettings, { DEFAULT_SETTINGS } from './settings'
@@ -45,7 +45,7 @@ export default class AwsSyncPlugin extends Plugin {
 		this.app.vault.on('rename', this.onLocalFileChanged.bind(this))
 
 		await this.initFileManager()
-
+		
 		if (this.settings.enableStatusBar) {
 			this.initStatusBar()
 		}
@@ -109,7 +109,10 @@ export default class AwsSyncPlugin extends Plugin {
 			return
 		}
 
-		this.fileManager = new FileManager(this.app.vault, this.getConfiguredProfile(), {
+		this.fileManager = new FileManager(this.app.vault,
+			{url:this.settings.url,
+				authorizeSDK:this.settings.authorizeSDK}, 
+			this.getConfiguredProfile(), {
 			bucketName: this.getConfiguredBucketName(),
 			pathPrefix: this.getConfiguredBucketPathPrefix(),
 			endpoint: this.getConfiguredBucketEndpoint(),
@@ -120,10 +123,11 @@ export default class AwsSyncPlugin extends Plugin {
 			direction: this.settings.syncDirection,
 			localFileProtection: this.settings.localFileProtection
 		})
-
+		this.setupPasteHandler(this.fileManager)
 		await this.fileManager.loadLocalFiles()
 		await this.fileManager.loadRemoteFiles()
 		this.updateStatusBarText()
+		console.log(this.fileManager)
 	}
 
 	initStatusBar(): void {
@@ -425,4 +429,44 @@ export default class AwsSyncPlugin extends Plugin {
 		this.pullInterval = window.setInterval(this.runRemotePull.bind(this), this.settings.autoPullInterval * 1000)
 		this.registerInterval(this.pullInterval)
 	}
+
+	setupPasteHandler(fileManager:FileManager): void {
+		// On paste event, get "files" from clipbaord data
+		// If files contain image, move to API call
+		// if Files empty or does not contain image, throw error
+		this.registerEvent(this.app.workspace.on('editor-paste',async (evt: ClipboardEvent, editor: Editor)=>{
+			const { files } = evt.clipboardData;
+			if(files.length > 0){
+				if (this.fileManager) {
+					evt.preventDefault(); // Prevent default paste behaviour
+					this.fileManager.uploadImage(files,editor)
+				}
+			
+				// else {
+				// // If not image data, or empty files array
+				//   new Notice("Cloudinary Image Uploader: Please check the image hosting settings.");
+				//   editor.replaceSelection("Please check settings for upload\n This will also appear if file is not of image type");
+				// } 
+		
+			}
+			
+		}))
+		this.registerEvent(this.app.workspace.on('editor-drop', (evt: DragEvent, editor: Editor) => {
+			const { files } = evt.dataTransfer;
+			if(files.length > 0){
+				if (this.fileManager) {
+					evt.preventDefault(); // Prevent default paste behaviour
+					this.fileManager.uploadImage(files,editor)
+			
+				}
+				// else {
+				// // If not image data, or empty files array
+				//   new Notice("Cloudinary Image Uploader: Please check the image hosting settings.");
+				//   editor.replaceSelection("Please check settings for upload\n This will also appear if file is not of image type");
+				// } 
+		
+			}
+		}));
+	}
+
 }

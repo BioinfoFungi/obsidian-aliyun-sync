@@ -1,10 +1,11 @@
-import { TFile, Vault } from 'obsidian'
+import { TFile, Vault ,Editor} from 'obsidian'
 import { S3Client, ListObjectsV2Command, _Object, GetObjectCommand, PutObjectCommand, DeleteObjectCommand, ListObjectsV2CommandOutput } from '@aws-sdk/client-s3'
 import { AwsProfile } from './aws'
 import * as path from 'path'
 import * as crypto from 'crypto'
 import { Readable } from 'stream'
-import OSS from 'ali-oss'
+
+import {Cms,FileCRUD,AliYunOSS,BucketOption} from '../utils/services'
 
 export const UPLOAD_SYMBOL= '\u2191'
 export const DOWNLOAD_SYMBOL= '\u2193'
@@ -79,40 +80,15 @@ export class LocalFile extends File {
     if (content === null) {
       return
     }
-    console.log( this.path+"--------"+this.md5hash)
-    const headers = {
-      // // 指定该Object被下载时的网页缓存行为。
-      // 'Cache-Control': 'no-cache',
-      // // 指定该Object被下载时的名称.
-      // 'Content-Disposition': 'oss_download.txt',
-      // // 指定Object的访问权限。
-      // 'x-oss-object-acl': 'private',
-      // // 指定Object的存储类型。
-      // 'x-oss-storage-class': 'Standard',
-      // // 该请求头用于检查消息内容是否与发送时一致。
-      // // Content-MD5值可通过对消息内容（不包括头部）执行MD5算法，获得128比特位数字，然后对该数字进行base64编码。
-      'Content-MD5': Buffer.from(this.md5hash, 'hex').toString('base64'),
-      // // 设置过期时间。
-      // 'Expires': 'Fri, 31 Dec 2021 16:57:01 GMT',
-      // // 指定服务器端加密方式。此处指定为OSS完全托管密钥进行加密（SSE-OSS）。
-      // 'x-oss-server-side-encryption': 'AES256',
-      // // 指定该Object的内容编码格式。
-      // 'Content-Encoding': 'utf-8',
-    };
-    const s3 = this.fileManager.getS3Client()
     const uploadPath = path.join(this.fileManager.bucketOpt.pathPrefix, this.path)
-    // const res = await s3.send(new PutObjectCommand({
+    let remoteFileMeta= await this.fileManager.fileCRUD.upload(uploadPath,content)
+    return new RemoteFile(this.fileManager, remoteFileMeta)
+       // const res = await s3.send(new PutObjectCommand({
     //   Bucket: this.fileManager.bucketOpt.bucketName,
     //   Key: uploadPath,
     //   Body: content,
     //   ContentMD5: Buffer.from(this.md5hash, 'hex').toString('base64')
     // }))
-    try {
-      let result = await s3.put(uploadPath,Buffer.from(content),{headers});
-      // console.log(result);
-    } catch (e) {
-      console.log(e);
-    }
     // const res = await s3.put('exampleobject.txt', path.normalize('D:\\localpath\\examplefile.txt'));
     // return new RemoteFile(this.fileManager, {
     //   name: uploadPath,
@@ -127,41 +103,38 @@ export class LocalFile extends File {
   }
 }
 
-export class OSSObj {
-  etag: string;
+export class RemoteFileMeta {
+  path:string;
+  md5hash: string;
   lastModified: Date;
-  url: string;
-  size: string;
 
-  constructor(etag: string,lastModified: Date,url: string,size: string){
-    this.etag=etag
+  constructor(path: string,md5hash: string,lastModified: Date){
+    this.path=path
+    this.md5hash=md5hash
     this.lastModified=lastModified
-    this.url=url
-    this.size=size
   }
 }
 
 export class RemoteFile extends File {
-  constructor(fileManager: FileManager, obj:OSS.ObjectMeta) {
+  constructor(fileManager: FileManager, obj:RemoteFileMeta) {
     super()
 
     this.fileManager = fileManager
 
-    this.path = obj.name.replace(this.fileManager.bucketOpt.pathPrefix, '')
+    this.path = obj.path.replace(this.fileManager.bucketOpt.pathPrefix, '')
     this.basename = path.basename(this.path)
     this.extension = path.extname(this.path)
-    this.md5hash = JSON.parse(obj.etag).toLowerCase()
-    this.lastModified = new Date(obj.lastModified)
+    this.md5hash = obj.md5hash
+    this.lastModified = obj.lastModified
   }
 
   async getContent(): Promise<string> {
-    const s3 = this.fileManager.getS3Client()
 
     // const res = await s3.send(new GetObjectCommand({
     //   Bucket: this.fileManager.bucketOpt.bucketName,
     //   Key: path.join(this.fileManager.bucketOpt.pathPrefix, this.path),
     // }))
-    let result = await s3.get( path.join(this.fileManager.bucketOpt.pathPrefix, this.path));
+
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     // const readable = Readable.from(res.Body)
@@ -169,7 +142,7 @@ export class RemoteFile extends File {
     // for await (const chunk of readable) {
     //   content += chunk
     // }
-    let content=result.content
+    let content= await this.fileManager.fileCRUD.getContent(path.join(this.fileManager.bucketOpt.pathPrefix, this.path))
     return content
   }
 
@@ -192,14 +165,7 @@ export class RemoteFile extends File {
   }
 
   async delete(): Promise<void> {
-    const s3 = this.fileManager.getS3Client()
-    try {
-      // 填写Object完整路径。Object完整路径中不能包含Bucket名称。
-      let result = await s3.delete(path.join(this.fileManager.bucketOpt.pathPrefix, this.path));
-      // console.log(result);
-    } catch (e) {
-      console.log(e);
-    }
+    await this.fileManager.fileCRUD.delete(path.join(this.fileManager.bucketOpt.pathPrefix, this.path))
     // await s3.send(new DeleteObjectCommand({
     //   Bucket: this.fileManager.bucketOpt.bucketName,
     //   Key: path.join(this.fileManager.bucketOpt.pathPrefix, this.path),
@@ -223,15 +189,11 @@ export interface SyncOptions {
 	localFileProtection: boolean
 }
 
-export interface BucketOption {
-  bucketName: string
-  pathPrefix: string
-  region: string
-  endpoint: string
-  accessKeyId: string
-	accessKeySecret: string
-}
 
+export interface CmsOption{
+  url:string;
+	authorizeSDK:string;
+}
 export default class FileManager {
   vault: Vault;
   profile: AwsProfile;
@@ -239,32 +201,39 @@ export default class FileManager {
   syncOpt: SyncOptions;
   localFiles: LocalFile[];
   remoteFiles: RemoteFile[];
+  cmsOpt:CmsOption;
+  fileCRUD:FileCRUD;
 
-  constructor(vault: Vault, profile: AwsProfile, bucketOpt: BucketOption, syncOpt: SyncOptions) {
+  constructor(vault: Vault, cmsOpt:CmsOption,profile: AwsProfile, bucketOpt: BucketOption, syncOpt: SyncOptions) {
     this.vault = vault
     this.profile = profile
     this.bucketOpt = bucketOpt
     this.syncOpt = syncOpt
+    this.cmsOpt=cmsOpt
+    this.fileCRUD= new Cms(cmsOpt.url,cmsOpt.authorizeSDK);
+    // this.fileCRUD = new AliYunOSS(bucketOpt);
+    //TUDO
+ 
   }
 
-  getS3Client(): OSS {
-    console.log(this)
-    let client = new OSS({
-      // yourRegion填写Bucket所在地域。以华东1（杭州）为例，Region填写为oss-cn-hangzhou。
-      region: this.bucketOpt.region, //"oss-cn-beijing"
-      // 阿里云账号AccessKey拥有所有API的访问权限，风险很高。强烈建议您创建并使用RAM用户进行API访问或日常运维，请登录RAM控制台创建RAM用户。
-      accessKeyId: this.bucketOpt.accessKeyId,
-      accessKeySecret: this.bucketOpt.accessKeySecret,
-      bucket:this.bucketOpt.bucketName //XXX-bucket
+  // getS3Client(): OSS {
+   
+  //   let client = new OSS({
+  //     // yourRegion填写Bucket所在地域。以华东1（杭州）为例，Region填写为oss-cn-hangzhou。
+  //     region: this.bucketOpt.region, //"oss-cn-beijing"
+  //     // 阿里云账号AccessKey拥有所有API的访问权限，风险很高。强烈建议您创建并使用RAM用户进行API访问或日常运维，请登录RAM控制台创建RAM用户。
+  //     accessKeyId: this.bucketOpt.accessKeyId,
+  //     accessKeySecret: this.bucketOpt.accessKeySecret,
+  //     bucket:this.bucketOpt.bucketName //XXX-bucket
       
-    });
-    // return new S3Client({
-      // credentials: this.profile.getCredentials(),
-    //   region: this.bucketOpt.region,
-    //   endpoint: this.bucketOpt.endpoint || this.bucketOpt.endpoint.trim() !== '' ? this.bucketOpt.endpoint : undefined
-    // })
-    return client
-  }
+  //   });
+  //   // return new S3Client({
+  //     // credentials: this.profile.getCredentials(),
+  //   //   region: this.bucketOpt.region,
+  //   //   endpoint: this.bucketOpt.endpoint || this.bucketOpt.endpoint.trim() !== '' ? this.bucketOpt.endpoint : undefined
+  //   // })
+  //   return client
+  // }
 
   async loadLocalFiles(): Promise<LocalFile[]> {
     const files = this.vault.getFiles()
@@ -275,12 +244,12 @@ export default class FileManager {
     
     return this.localFiles
   }
+  // async loadCmsArticle(){
 
+  // }
   async loadRemoteFiles(): Promise<RemoteFile[]> {
-    const s3 = this.getS3Client()
-    // console.log(s3)
+    
 
-    let result = await s3.list({"max-keys": 1000,"prefix": 'Obsidian/'},null);
     // console.log(result);
     // this.remoteFileOSS=result
     // return result
@@ -306,15 +275,54 @@ export default class FileManager {
     //   continuationToken = res.NextContinuationToken
       
     // } while (continuationToken !== undefined && maxPages > 0)
+    this.remoteFiles = await this.fileCRUD.fileList(this)
+    // console.log(this.remoteFiles)
+  
 
-    
-    this.remoteFiles = result.objects.map(content => new RemoteFile(this,content))
     // console.log("loadRemoteFiles:------>" )
     // console.log(this.remoteFiles )
     return this.remoteFiles
     
   }
+  async uploadImage(files:FileList,editor:Editor){
+    // console.log(files)
+    for (let file of files) {
+			// const randomString = (Math.random() * 10086).toString(36).substr(0, 8)
+			const pastePlaceText = `![uploading...]()\n`
+			editor.replaceSelection(pastePlaceText) // Generate random string to show on editor screen while API call completes
+			// console.log(pastePlaceText)
+			// // Cloudinary request format
+			// // Send form data with a file and upload preset
+			// // Optionally define a folder
+      // const formData = new FormData();
+      // formData.append('file',file);
+      const imgUrl = await this.fileCRUD.uploadImage(file)
+      const imgMarkdownText = `![](${imgUrl})`
+      this.replaceText(editor, pastePlaceText, imgMarkdownText)
+			// formData.append('upload_preset',this.settings.uploadPreset);
+			// formData.append('folder',this.settings.folder);
 
+			// // // Make API call
+			// axios({
+			// 	url: `${this.settings.url}/api/attachment/upload`,
+			// 	method: 'POST',
+			// 	data: formData,
+			// 	headers:{'authorizeSDK':this.settings.authorizeSDK}
+			// }).then(res => {
+			// 	// Get response public URL of uploaded image
+			// 	console.log(res.data.data.path);
+			// 	// const url = objectPath.get(res.data, 'secure_url')
+			// 	const url = res.data.data.path;
+			// 	const imgMarkdownText = `![](${url})`
+			// 	// Show MD syntax using uploaded image URL, in Obsidian Editor
+			// 	this.replaceText(editor, pastePlaceText, imgMarkdownText)
+			// }, err => {
+			// 	// Fail otherwise
+			// 	new Notice(err, 5000)
+			// 	console.log(err)
+			// })
+		}
+  }
   findRemoteFile(path: string): RemoteFile | undefined {
     return this.remoteFiles.find(file => file.path === path)
   }
@@ -401,4 +409,21 @@ export default class FileManager {
     }
   }
 
+  replaceText(editor: Editor, target: string, replacement: string): void {
+		target = target.trim();
+		let lines = [];
+		for (let i = 0; i < editor.lineCount(); i++){
+		  lines.push(editor.getLine(i));
+		}
+		//const tlines = editor.getValue().split("\n");
+		for (let i = 0; i < lines.length; i++) {
+		  const ch = lines[i].indexOf(target)
+		  if (ch !== -1) {
+			const from = { line: i, ch };
+			const to = { line: i, ch: ch + target.length };
+			editor.replaceRange(replacement, from, to);
+			break;
+		  }
+		}
+	}
 }

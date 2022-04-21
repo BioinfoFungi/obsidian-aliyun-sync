@@ -16,6 +16,30 @@ export default class AwsSyncSettingTab extends PluginSettingTab {
 
 		containerEl.empty()
 
+
+		new Setting(containerEl)
+		.setName('url')
+		.setDesc('url')
+		.addText(text => text
+			.setValue(this.plugin.settings.url)
+			.setPlaceholder('REQUIRED')
+			.onChange(async (value) => {
+				this.plugin.settings.url = value
+				await this.plugin.saveSettings()
+			}))
+
+			new Setting(containerEl)
+			.setName('authorizeSDK')
+			.setDesc('authorizeSDK')
+			.addText(text => text
+				.setValue(this.plugin.settings.authorizeSDK)
+				.setPlaceholder('REQUIRED')
+				.onChange(async (value) => {
+					this.plugin.settings.authorizeSDK = value
+					await this.plugin.saveSettings()
+				}))
+
+
 		const profiles = await this.plugin.awsCredentials.loadProfiles()
 		if (profiles.length > 0) {
 			new Setting(containerEl)
@@ -35,6 +59,8 @@ export default class AwsSyncSettingTab extends PluginSettingTab {
 			containerEl.createEl('p', {text: 'Cloud not find any AWS profiles!', cls: ['setting-item', 'aws-s3-sync-no-profile']})
 		}
 
+
+	
     new Setting(containerEl)
       .setName('AWS Region')
       .setDesc('The region where S3 bucket was created')
